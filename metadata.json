@@ -1,0 +1,8 @@
+{
+  "name": "Yeilu Store Inventory Relational",
+  "description": "Multi-location inventory with QR scanning, n8n sync and Voice AI loading.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
