@@ -1,22 +1,37 @@
 
 import React, { useState, useEffect } from 'react';
-import { AuthState, SedeId, User, UserRole } from './types';
-import { STORAGE_KEYS, GAS_WEB_APP_URL } from './constants';
+import { AuthState, SedeId, User } from './types';
+import { STORAGE_KEYS, N8N_WEBHOOKS } from './constants';
 import { Input, Button } from './components/UI';
 import { Dashboard } from './components/Dashboard';
+import { SedeSelector } from './components/SedeSelector';
+import { HashGenerator } from './components/HashGenerator';
+
+import { hashPassword } from './utils';
 
 const App: React.FC = () => {
   const [authState, setAuthState] = useState<AuthState>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.AUTH);
-    return saved ? JSON.parse(saved) : { user: null, isAuthenticated: false };
+    const parsed = saved ? JSON.parse(saved) : { user: null, isAuthenticated: false };
+    const savedSede = localStorage.getItem('yeilu_active_sede');
+    if (savedSede && parsed.isAuthenticated) {
+      parsed.activeSede = savedSede as SedeId | 'ALL';
+    }
+    return parsed;
   });
 
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showHashGen, setShowHashGen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.AUTH, JSON.stringify(authState));
+    if (authState.activeSede) {
+      localStorage.setItem('yeilu_active_sede', authState.activeSede);
+    } else {
+      localStorage.removeItem('yeilu_active_sede');
+    }
   }, [authState]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -24,78 +39,92 @@ const App: React.FC = () => {
     setError('');
     setIsLoading(true);
 
-    if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL.includes('EJEMPLO')) {
-      setError('Configuración incompleta: URL de Google Sheets no válida.');
-      setIsLoading(false);
-      return;
-    }
+    const performLogin = async (password: string) => {
+      try {
+        // Enviamos el usuario tal cual lo escribe el usuario (sin toLowerCase) para respetar mayúsculas/minúsculas de la Hoja de Cálculo
+        const usuarioPayload = loginForm.email.trim();
+        
+        console.log(`[Login] Intentando login con URL: ${N8N_WEBHOOKS.LOGIN}`);
+        console.log(`[Login] Payload:`, { usuario: usuarioPayload, passwordLength: password.length });
+        
+        const res = await fetch(N8N_WEBHOOKS.LOGIN, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            // Enviamos múltiples alias para asegurar compatibilidad con el workflow de n8n
+            usuario: usuarioPayload, 
+            username: usuarioPayload,
+            email: usuarioPayload,
+            password: password,
+            clave: password
+          })
+        });
+        
+        console.log(`[Login] Status: ${res.status} ${res.statusText}`);
+        
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await res.text();
+          console.error(`[Login] Respuesta no JSON:`, text.substring(0, 200));
+          throw new Error(`Respuesta del servidor no válida (${res.status}): ${text.substring(0, 50)}...`);
+        }
+
+        const data = await res.json();
+        console.log(`[Login] Data recibida:`, data);
+        
+        // Si falla, agregamos información de depuración al error
+        if (!data.success) {
+           data.error = `${data.error || 'Credenciales incorrectas'} (Usuario enviado: "${usuarioPayload}")`;
+        }
+        
+        return { ...data, _status: res.status, _ok: res.ok };
+      } catch (err: any) {
+        console.error(`[Login] Error de red/fetch:`, err);
+        throw new Error(err.message === 'Failed to fetch' ? 'Error de conexión (posible bloqueo CORS o servidor caído)' : err.message);
+      }
+    };
 
     try {
-      // Consultamos los datos al script de Google
-      const response = await fetch(`${GAS_WEB_APP_URL}?action=GET_ALL`, {
-        method: 'GET',
-        mode: 'cors'
-      });
-      
-      if (!response.ok) throw new Error("Error de conexión con el servidor de datos.");
-      
-      const data = await response.json();
-      const usersTable = data.usuarios || [];
-
-      if (!Array.isArray(usersTable) || usersTable.length === 0) {
-        throw new Error("No se pudo leer la tabla de usuarios. Verifica que la pestaña 'Usuarios' exista y tenga datos.");
+      let hashedPassword = loginForm.password.trim();
+      try {
+        hashedPassword = await hashPassword(loginForm.password.trim());
+      } catch (cryptoError) {
+        console.warn("Crypto API no disponible, usando texto plano:", cryptoError);
       }
 
-      // Helper ultra-flexible para obtener valores de columnas sin importar variaciones de nombre
-      const getFlexibleValue = (obj: any, aliases: string[]) => {
-        if (!obj || typeof obj !== 'object') return null;
-        const keys = Object.keys(obj);
-        for (const alias of aliases) {
-          const foundKey = keys.find(k => k.trim().toLowerCase() === alias.toLowerCase());
-          if (foundKey !== undefined) {
-            const val = obj[foundKey];
-            return val !== null && val !== undefined ? val : null;
-          }
+      let lastError = null;
+
+      // 1. Intentar con Hash (Estándar nuevo)
+      try {
+        const data = await performLogin(hashedPassword);
+        if (data.success) {
+          setAuthState({ user: data.user, isAuthenticated: true });
+          return;
         }
-        return null;
-      };
-
-      const normalize = (val: any) => String(val ?? '').trim();
-
-      const foundUser = usersTable.find((u: any) => {
-        if (!u) return false;
-        
-        // Buscamos el identificador (puede ser correo, usuario, id, nombre, etc)
-        const identityInSheet = normalize(getFlexibleValue(u, ['Correo', 'Email', 'Usuario', 'ID', 'Login', 'User', 'Nombre', 'Name'])).toLowerCase();
-        const passInSheet = normalize(getFlexibleValue(u, ['Contraseña', 'Contrasena', 'Password', 'Clave', 'Pass', 'Clave Acceso']));
-        
-        const inputIdentity = normalize(loginForm.email).toLowerCase();
-        const inputPass = normalize(loginForm.password);
-        
-        return identityInSheet === inputIdentity && passInSheet === inputPass;
-      });
-
-      if (!foundUser) {
-        // Ayuda a depurar si las credenciales no coinciden por diferencias sutiles
-        console.debug("Intento de login fallido para:", loginForm.email);
-        console.debug("Headers detectados en el Excel:", Object.keys(usersTable[0] || {}));
-        throw new Error("Credenciales no encontradas. Verifica que el Usuario y la Clave coincidan exactamente con lo registrado en el Excel.");
+        lastError = data.error || 'Credenciales incorrectas';
+      } catch (err: any) {
+        console.error("Hash login failed:", err);
+        lastError = err.message;
       }
 
-      // Mapeo seguro de datos del usuario
-      const rawSede = normalize(getFlexibleValue(foundUser, ['Sede', 'Tienda', 'Local', 'Ubicacion', 'Bodega']));
-      // Limpiamos la sede de prefijos numéricos o espacios
-      const cleanSedeId = rawSede.toLowerCase().replace(/^[0-9]\.?\s*/, '').replace(/\s+/g, '_') as SedeId;
-      
-      const userData: User = {
-        id: normalize(getFlexibleValue(foundUser, ['Correo', 'Email', 'ID', 'Usuario', 'Login']) || Date.now().toString()),
-        username: normalize(getFlexibleValue(foundUser, ['Nombre', 'Name', 'Usuario', 'User']) || 'Usuario'),
-        sedeId: (cleanSedeId as any) || 'taller',
-        role: (normalize(getFlexibleValue(foundUser, ['Perfil', 'Rol', 'Role', 'Nivel']) || 'OPERADOR').toUpperCase()) as UserRole,
-        name: normalize(getFlexibleValue(foundUser, ['Nombre', 'Name']) || 'Usuario')
-      };
+      // 2. Fallback a Texto Plano (si falló el hash y son diferentes)
+      if (hashedPassword !== loginForm.password.trim()) {
+        console.log("Intentando fallback texto plano...");
+        try {
+          const data = await performLogin(loginForm.password.trim());
+          if (data.success) {
+            console.log("Login exitoso con texto plano (Legacy)");
+            setAuthState({ user: data.user, isAuthenticated: true });
+            return;
+          }
+        } catch (err) {
+          console.error("Fallback login failed:", err);
+        }
+      }
 
-      setAuthState({ user: userData, isAuthenticated: true });
+      // Si llegamos aquí, ambos fallaron
+      throw new Error(lastError || 'Error desconocido al iniciar sesión');
+
     } catch (err: any) {
       console.error("Login Error:", err);
       setError(err.message || 'Error inesperado al validar credenciales.');
@@ -108,16 +137,27 @@ const App: React.FC = () => {
     setAuthState({ user: null, isAuthenticated: false });
   };
 
+  const handleSelectSede = (sede: SedeId | 'ALL') => {
+    setAuthState(prev => ({ ...prev, activeSede: sede }));
+  };
+
+  const handleChangeSede = () => {
+    setAuthState(prev => ({ ...prev, activeSede: undefined }));
+  };
+
   if (authState.isAuthenticated && authState.user) {
-    return <Dashboard user={authState.user} onLogout={handleLogout} />;
+    if (!authState.activeSede) {
+      return <SedeSelector user={authState.user} onSelectSede={handleSelectSede} />;
+    }
+    return <Dashboard user={authState.user} activeSede={authState.activeSede} onChangeSede={handleChangeSede} onLogout={handleLogout} />;
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200 border border-slate-100 overflow-hidden">
         <div className="bg-indigo-600 p-10 text-white text-center">
-          <div className="bg-white/20 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 backdrop-blur-md">
-             <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2-2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+          <div className="bg-white/20 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 backdrop-blur-md overflow-hidden">
+             <img src="https://i.imgur.com/ugAX7tI.png" alt="Yeilu Store Logo" className="w-16 h-16 object-contain" />
           </div>
           <h2 className="text-3xl font-black uppercase tracking-tighter">Yeilu Store</h2>
           <p className="text-indigo-100 mt-2 font-bold tracking-widest text-[10px] uppercase opacity-80">Inventory Intelligence v2.3</p>
@@ -163,12 +203,20 @@ const App: React.FC = () => {
 
           <div className="pt-8 border-t border-slate-50 text-center">
             <p className="text-[9px] text-slate-400 uppercase tracking-[0.2em] font-black leading-relaxed">
-              VINCULADO A GOOGLE SHEETS<br/>
-              TABLA: "Usuarios"
+              VINCULADO A N8N WEBHOOKS<br/>
+              SISTEMA CENTRALIZADO
             </p>
+            <button 
+              type="button"
+              onClick={() => setShowHashGen(true)}
+              className="mt-4 text-[9px] text-indigo-300 hover:text-indigo-500 font-bold uppercase tracking-widest transition-colors"
+            >
+              🛠️ Herramientas Admin
+            </button>
           </div>
         </form>
       </div>
+      <HashGenerator isOpen={showHashGen} onClose={() => setShowHashGen(false)} />
     </div>
   );
 };

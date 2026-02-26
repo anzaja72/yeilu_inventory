@@ -5,6 +5,7 @@ import { Sede } from './types';
  * CONFIGURACIÓN n8n
  */
 export const N8N_WEBHOOKS = {
+  LOGIN: 'https://icad-n8n.ltubgr.easypanel.host/webhook/d3d159ca-7ae5-47eb-ab07-7d7a01bf9755',
   CONSULTA_GLOBAL: 'https://icad-n8n.ltubgr.easypanel.host/webhook/api/consulta-inventario',
   REGISTRO_MOVIMIENTO: 'https://icad-n8n.ltubgr.easypanel.host/webhook/api/movimiento',
   GESTION_MAESTRO: 'https://icad-n8n.ltubgr.easypanel.host/webhook/api/producto-nuevo',
@@ -13,6 +14,7 @@ export const N8N_WEBHOOKS = {
   INFORME_IA: 'https://icad-n8n.ltubgr.easypanel.host/webhook/692386ed-2848-4323-a6d4-1f2f7a5f0349'
 };
 
+// @deprecated: GAS_WEB_APP_URL is being migrated to n8n webhooks. Kept for gradual migration.
 export const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzYf1o2Q0DNm2hGPksEYP8GQ5nOhVRt48mnDp41n6igS5mdq3uezQA40BRQWvIYjQlVnA/exec';
 
 export const SEDES: Sede[] = [
