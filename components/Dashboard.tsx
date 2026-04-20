@@ -140,9 +140,12 @@ export const Dashboard: React.FC<{ user: User; activeSede: SedeId | 'ALL'; onCha
         : (getFlexibleValue(stockObj, ['total', 'Cantidad', 'Suma', 'Total_Existencias']) ?? 
            getFlexibleValue(p, ['Stock_Actual', 'Cantidad_Total', 'Existencias', 'Stock', 'total']) ?? 0);
 
+      const ref = String(getFlexibleValue(p, ['referencia', 'codigo', 'sku', 'id', 'Codigo']) || '').toUpperCase();
+      const nom = String(getFlexibleValue(p, ['nombre', 'descripcion', 'producto', 'Descripcion']) || '');
+
       return {
-        referencia: String(getFlexibleValue(p, ['referencia', 'codigo', 'sku', 'id', 'Codigo']) || '').toUpperCase(),
-        nombre: String(getFlexibleValue(p, ['nombre', 'descripcion', 'producto', 'Descripcion']) || 'Sin Nombre'),
+        referencia: ref,
+        nombre: nom || ref || 'Sin Nombre',
         tipo: String(getFlexibleValue(p, ['tipo', 'categoria', 'familia', 'Categoria']) || 'Otros'),
         precioCosto: parseSafeNumber(getFlexibleValue(p, ['precioCosto', 'costo', 'valor_compra', 'Costo'])),
         precioVenta: parseSafeNumber(getFlexibleValue(p, ['precioVenta', 'venta', 'valor_venta', 'Venta'])),
