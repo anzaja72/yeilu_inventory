@@ -973,7 +973,7 @@ export const Dashboard: React.FC<{ user: User; activeSede: SedeId | 'ALL'; onCha
                         notes: (!prev.notes && prod) ? prod.nombre : prev.notes 
                       }));
                     }}
-                    productos={filteredData}
+                    productos={rawProducts}
                     allowNew={false}
                   />
                 </div>
@@ -1134,7 +1134,7 @@ export const Dashboard: React.FC<{ user: User; activeSede: SedeId | 'ALL'; onCha
                     return newState;
                   });
                 }}
-                productos={filteredData}
+                productos={rawProducts}
                 allowNew={true}
               />
               {rawProducts.some(p => p.referencia === ingresoForm.referencia) && (

@@ -4,7 +4,15 @@ interface ProductoSugerido {
   referencia: string;
   nombre: string;
   tipo: string;
-  stockReal?: number;
+  stock?: {
+    taller: number;
+    country: number;
+    plazaDelSol: number;
+    portalDelPrado: number;
+    centro: number;
+    total: number;
+  };
+  stockReal?: number; // kept for compatibility
   stockMinimo?: number;
   precioCosto?: number;
   precioVenta?: number;
@@ -47,6 +55,7 @@ export const ReferenceSearch: React.FC<ReferenceSearchProps> = ({
 
   // Search and Validation Logic
   useEffect(() => {
+    console.log('[ReferenceSearch] Term:', inputValue, 'Total Products:', productos.length);
     const timer = setTimeout(() => {
       if (!inputValue.trim()) {
         setSuggestions([]);
@@ -77,7 +86,7 @@ export const ReferenceSearch: React.FC<ReferenceSearchProps> = ({
         p.referencia.toUpperCase().includes(term) ||
         p.nombre.toUpperCase().includes(term) ||
         p.tipo.toUpperCase().includes(term)
-      ).slice(0, 6);
+      ).slice(0, 10);
 
       setSuggestions(results);
       
@@ -160,11 +169,11 @@ export const ReferenceSearch: React.FC<ReferenceSearchProps> = ({
       {/* Stock Info for Movimiento Modal */}
       {!allowNew && isValid === true && selectedProduct && (
         <div className={`mt-1 text-[10px] font-bold ${
-          (selectedProduct.stockReal || 0) > (selectedProduct.stockMinimo || 0) 
+          (selectedProduct.stock?.total || 0) > (selectedProduct.stockMinimo || 0) 
             ? 'text-emerald-600' 
             : 'text-rose-600'
         }`}>
-          📦 {selectedProduct.nombre} · Stock: {selectedProduct.stockReal || 0} UND
+          📦 {selectedProduct.nombre} · Stock Global: {selectedProduct.stock?.total || 0} UND
         </div>
       )}
 
@@ -175,21 +184,37 @@ export const ReferenceSearch: React.FC<ReferenceSearchProps> = ({
             <div
               key={idx}
               onClick={() => handleSelect(product)}
-              className="p-3 border-b border-slate-50 hover:bg-indigo-50 cursor-pointer transition-colors flex justify-between items-center"
+              className="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors flex justify-between items-start"
             >
-              <div>
-                <p className="text-[11px] font-black text-indigo-600">{product.referencia}</p>
-                <p className="text-[10px] font-bold text-slate-500 uppercase">{product.nombre}</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <p className="text-[11px] font-black text-indigo-600 truncate">{product.referencia}</p>
+                  <p className="text-[9px] font-medium text-slate-400 truncate uppercase">{product.nombre}</p>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {product.stock ? (
+                    <>
+                      {product.stock.taller > 0 && <span className="text-[8px] bg-slate-900 px-1.5 py-0.5 rounded-sm font-black text-white">TALLER: {product.stock.taller}</span>}
+                      {product.stock.country > 0 && <span className="text-[8px] bg-indigo-600 px-1.5 py-0.5 rounded-sm font-black text-white">COUNTRY: {product.stock.country}</span>}
+                      {product.stock.plazaDelSol > 0 && <span className="text-[8px] bg-amber-500 px-1.5 py-0.5 rounded-sm font-black text-white">PLAZA SOL: {product.stock.plazaDelSol}</span>}
+                      {product.stock.portalDelPrado > 0 && <span className="text-[8px] bg-rose-500 px-1.5 py-0.5 rounded-sm font-black text-white">PORTAL: {product.stock.portalDelPrado}</span>}
+                      {product.stock.centro > 0 && <span className="text-[8px] bg-emerald-600 px-1.5 py-0.5 rounded-sm font-black text-white">CENTRO: {product.stock.centro}</span>}
+                      {product.stock.total === 0 && <span className="text-[8px] font-black text-rose-600 border border-rose-200 px-2 py-0.5 rounded-sm animate-pulse uppercase">¡Sin existencias en ninguna sede!</span>}
+                    </>
+                  ) : (
+                    <p className="text-[9px] text-slate-400 italic">Cargando datos de sedes...</p>
+                  )}
+                </div>
               </div>
-              <div className="text-right">
-                <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-black ${
-                  (product.stockReal || 0) > (product.stockMinimo || 0) 
+              <div className="text-right ml-4 shrink-0">
+                <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-black ${
+                  (product.stock?.total || 0) > (product.stockMinimo || 0) 
                     ? 'bg-emerald-100 text-emerald-700' 
                     : 'bg-rose-100 text-rose-700'
                 }`}>
-                  {product.stockReal || 0} UND
+                  {product.stock?.total || 0} UND
                 </span>
-                <p className="text-[9px] text-slate-400 mt-0.5 uppercase">{product.tipo}</p>
+                <p className="text-[8px] text-slate-400 mt-1 font-bold uppercase truncate max-w-[80px]">{product.tipo}</p>
               </div>
             </div>
           ))}
